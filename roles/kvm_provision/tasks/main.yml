@@ -1,0 +1,31 @@
+---
+# tasks file for kvm_provision
+
+- name: Ensure requirements in place
+  package:
+    name:
+      - libguestfs-tools
+      - python3-libvirt
+      - python3-lxml
+      - qemu-utils
+    state: present
+  become: yes
+
+- name: Get VMs list
+  community.libvirt.virt:
+    command: list_vms
+  register: existing_vms
+  changed_when: no
+
+- name: Download base image (Ubuntu 24.04)
+  get_url:
+    url: "{{ base_image_url }}"
+    dest: "/tmp/{{ base_image_name }}"
+    mode: 0644
+
+# C'est ici que la magie opère : on inclut le fichier vm_install.yml pour chaque invité
+- name: Provision each VM
+  include_tasks: vm_install.yml
+  loop: "{{ guests }}"
+  loop_control:
+    label: "{{ item.name }}"

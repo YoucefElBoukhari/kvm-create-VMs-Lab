@@ -1,0 +1,38 @@
+---
+- name: Copy base image for {{ item.name }}
+  copy:
+    src: "/tmp/{{ base_image_name }}"
+    dest: "{{ libvirt_pool_dir }}/{{ item.name }}.qcow2"
+    force: no
+    remote_src: yes
+    mode: 0660
+  register: copy_result
+
+- name: Resize disk to {{ item.disk_size }} for {{ item.name }}
+  command: "qemu-img resize {{ libvirt_pool_dir }}/{{ item.name }}.qcow2 {{ item.disk_size }}"
+  when: copy_result.changed
+
+- name: Customize image (Hostname & SSH) for {{ item.name }}
+  command: |
+    virt-customize -a {{ libvirt_pool_dir }}/{{ item.name }}.qcow2 \
+    --hostname {{ item.name }} \
+    --root-password password:{{ vm_root_pass }} \
+    --ssh-inject 'root:file:{{ ssh_key }}' \
+    --uninstall cloud-init
+  when: copy_result.changed
+
+- name: Define VM {{ item.name }}
+  community.libvirt.virt:
+    command: define
+    xml: "{{ lookup('template', 'vm-template.xml.j2') }}"
+  vars:
+    # On passe les variables de l'item actuel au template
+    vm_name: "{{ item.name }}"
+    vm_ram_mb: "{{ item.memory }}"
+    vm_vcpus: "{{ item.vcpus }}"
+    interfaces: "{{ item.interfaces }}"
+
+- name: Ensure VM {{ item.name }} is started
+  community.libvirt.virt:
+    name: "{{ item.name }}"
+    state: running
